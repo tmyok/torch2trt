@@ -1,8 +1,11 @@
 import torch.nn.functional as F
 import torch.nn as nn
-from torch2trt.torch2trt import *                                 
+from torch2trt.torch2trt import *
 from torch2trt.module_test import add_module_test
-import collections
+try:
+    from collections import Sequence
+except ImportError:
+    from collections.abc import Sequence
 
 
 def has_interpolate_plugin():
@@ -11,7 +14,7 @@ def has_interpolate_plugin():
         return True
     except:
         return False
-    
+
 def get_interpolate_plugin(size, mode, align_corners):
     from torch2trt.torch_plugins import InterpolatePlugin
     PLUGIN_NAME = 'interpolate'
@@ -41,32 +44,32 @@ def convert_interpolate_plugin(ctx):
     size = list(output.shape[2:])
 
     plugin = get_interpolate_plugin(size=size, mode=mode, align_corners=align_corners)
-    
+
 
     layer = ctx.network.add_plugin_v2([input_trt], plugin)
 
     output._trt = layer.get_output(0)
 
-                                                  
+
 @tensorrt_converter('torch.nn.functional.interpolate', enabled=trt_version() >= '7.1')
 @tensorrt_converter('torch.nn.functional.upsample', enabled=trt_version() >= '7.1')
-def convert_interpolate_trt7(ctx):                                     
-    #parse args                     
-    input = get_arg(ctx, 'input', pos=0, default=None) 
+def convert_interpolate_trt7(ctx):
+    #parse args
+    input = get_arg(ctx, 'input', pos=0, default=None)
     size = get_arg(ctx, 'size', pos=1, default=None)
     scale_factor=get_arg(ctx, 'scale_factor', pos=2, default=None)
     mode = get_arg(ctx, 'mode', pos=3, default='nearest')
     align_corners = get_arg(ctx, 'align_corners', pos=4, default=None)
 
     input_dim = input.dim() - 2
-    
+
     input_trt = add_missing_trt_tensors(ctx.network, [input])[0]
     output = ctx.method_return
     layer = ctx.network.add_resize(input=input_trt)
 
     shape = size
     if shape != None:
-        if isinstance(shape, collections.Sequence):
+        if isinstance(shape, Sequence):
             shape = [input.size(0), input.size(1)] + list(shape)
             shape = make_size_wrapper(shape)
         else:
@@ -78,7 +81,7 @@ def convert_interpolate_trt7(ctx):
 
     scales = scale_factor
     if scales != None:
-        if not isinstance(scales, collections.Sequence):
+        if not isinstance(scales, Sequence):
             scales = [scales] * input_dim
         layer.scales = [1, 1] + list(scales)
 
@@ -101,9 +104,9 @@ def convert_interpolate_trt7(ctx):
 class Interpolate(torch.nn.Module):
     def __init__(self, size=None,scale_factor=None, mode=None, align_corners=None):
         super(Interpolate, self).__init__()
-		## Use either size or scale factor. 
+		## Use either size or scale factor.
         self.size = size
-        self.scale_factor = scale_factor 
+        self.scale_factor = scale_factor
         self.mode = mode
         self.align_corners = align_corners
 
